@@ -1,0 +1,674 @@
+# iocage v0.89.2#
+
+######################################
+###                                ###
+###     Temperature Control        ###
+###                                ###
+######################################
+
+
+   ############################
+   #                          #
+   #  overheat control REZ    # 
+   #                          #
+   ############################
+
+
+  # Binary Sensors - Trend Sensors
+binary_sensor:
+  - platform: trend
+    sensors:
+      solar_heat_living_rez:
+        friendly_name: 'rapid temperature rise in living rez'
+        entity_id: sensor.temp_corridor_rez
+        sample_duration: 3600     # Messwerte einsammeln von den letzten 60 Minuten
+        max_samples: 4
+        min_gradient: 0.0004    # temp rise must be at least +1.5 degree in 1 hour (1,5/(60*60))
+        device_class: heat
+
+      solar_heat_office_rez:
+        friendly_name: 'rapid temperature rise in office rez'
+        entity_id: sensor.temp_office
+        sample_duration:  3600   
+        max_samples: 4
+        min_gradient: 0.0004
+        device_class: heat
+
+  - platform: template
+    sensors:
+      overheat_living_rez:
+        friendly_name: Temp living rez overheat 
+        value_template: "{{ states.input_number.temp_max_living.state | float < states.sensor.temp_corridor_rez.state | float }}"
+        device_class: heat
+
+      overheat_office_rez:
+        friendly_name: Temp office rez overheat
+        value_template: "{{ states.input_number.temp_max_living.state | float < states.sensor.temp_office.state | float }}"
+        device_class: heat
+
+      overheat_grchsudetage:
+        friendly_name: Temp Gr Ch Sud etage overheat 
+        value_template: "{{ states.input_number.temp_max_living.state | float < states.sensor.temp_room_etage_sud.state | float }}" 
+        device_class: heat
+
+      overheat_grchnordetage:
+        friendly_name: Temp Gr Ch Nord etage overheat
+        value_template: "{{ states.input_number.temp_max_living.state | float < states.sensor.temp_room_etagenord.state | float }}" 
+        device_class: heat
+
+
+   # valve monitor status with binary sensors
+  - platform: mqtt
+    name: corridor rez valve status
+    state_topic: "stat/sonoff4ch-id01/POWER1"
+    device_class: opening
+    
+  - platform: mqtt
+    name: office valve status
+    state_topic: "stat/sonoff4ch-id01/POWER2"
+    device_class: opening
+
+  - platform: mqtt
+    name: gr ch nord valve status
+    state_topic: "stat/sonoff4ch-id02/POWER1"
+    device_class: opening
+    
+  - platform: mqtt
+    name: gr ch sud valve status
+    state_topic: "stat/sonoff4ch-id02/POWER2"
+    device_class: opening
+    
+  - platform: mqtt
+    name: ch parents valve status
+    state_topic: "stat/sonoff4ch-id02/POWER3"
+    device_class: opening
+    
+  - platform: mqtt
+    name: atelier etage valve status
+    state_topic: "stat/sonoff4ch-id02/POWER4"
+    device_class: opening   
+    
+
+# reactive overheat control
+  # Einflussfaktoren: 
+    # Azimuth -> Sued- oder Westfenster mit Sonneneinstrahlung
+    # DONE -> trend_sensor: rapide ansteigende Temperatur in sensor.temp_corridor_rez > Jalousien fahren runter
+    # aktueller UV-Wert hoch (via darksky)
+    # hoher lux-Wert in Corrider Rez und Etage
+
+
+
+
+    ################################
+    ###  Input Boolean section   ###
+    ################################
+
+input_boolean:
+### general input boolean
+  # automatic temperature control activated
+  heating_auto_temp_control:
+    name: heating automation inactive/active 
+    initial: on
+  # open all heating valves -> for calibration, testing,  etc.
+  heating_close_open_all_valves:
+    name: all valves closed/open 
+    initial: off
+  # heat containment control
+  heat_containment_control:
+    name: heat containment off/on
+    initial: on 
+  blind_opening_lamellas_only:
+    name: fully open blinds / turn lamellas only
+    initial: on
+
+  # audio notifications
+  heating_audio_notifications:
+    name: Notifications for heating events
+    initial: off
+    icon: mdi:bell-ring
+
+
+    ##############################
+    ###  Input Number section  ###
+    ##############################
+
+input_number:
+  temp_min_living:
+    name: Minimal-Temperatur Wohnen
+    initial: 22
+    min: 19
+    max: 23
+    step: 0.5
+
+  temp_max_living:
+    name: Maximal-Temperatur Wohnen
+    initial: 24
+    min: 22
+    max: 25
+    step: 1
+
+  temp_min_sleeping:
+    name: Minimal-Solltemperatur Schlafen
+    initial: 18
+    min: 18
+    max: 21
+    step: 0.5
+
+  temp_max_sleeping:
+    name: Maximal-Solltemperatur Schlafen
+    initial: 20
+    min: 19
+    max: 22
+    step: 1
+   
+  
+### Other rooms
+
+
+ 
+    ######################## 
+    ### Switches Section ###
+    ########################
+
+
+switch:
+  # Sonoff4ch-id01 # 
+
+# id01-p01 controls valve for: Rez Salon1/Salon2/Cuisine(EXT)
+  - platform: mqtt
+    name: "Sonoff 4ch-id01-p01"
+    command_topic: "cmnd/sonoff4ch-id01/power1"
+    state_topic: "stat/sonoff4ch-id01/POWER1"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true
+
+# id01-p02 controls valve for: Office
+  - platform: mqtt
+    name: "Sonoff 4ch-id01-p02"
+    command_topic: "cmnd/sonoff4ch-id01/power2"
+    state_topic: "stat/sonoff4ch-id01/POWER2"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true  
+
+# id01-p03 controls valve for: 
+  - platform: mqtt
+    name: "Sonoff 4ch-id01-p03"
+    command_topic: "cmnd/sonoff4ch-id01/power3"
+    state_topic: "stat/sonoff4ch-id01/POWER3"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true  
+
+# id01-p04 controls valve for: 
+  - platform: mqtt
+    name: "Sonoff 4ch-id01-p04"
+    command_topic: "cmnd/sonoff4ch-id01/power4"
+    state_topic: "stat/sonoff4ch-id01/POWER4"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true
+    
+  # Sonoff4ch-id02 # 
+
+# id02-p01 controls valve for: Grande chambre etage - Nord
+  - platform: mqtt
+    name: "Sonoff 4ch-id02-p01"
+    command_topic: "cmnd/sonoff4ch-id02/power1"
+    state_topic: "stat/sonoff4ch-id02/POWER1"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true
+
+# id02-p02 controls valve for: Grande chambre etage - Sud
+  - platform: mqtt
+    name: "Sonoff 4ch-id02-p02"
+    command_topic: "cmnd/sonoff4ch-id02/power2"
+    state_topic: "stat/sonoff4ch-id02/POWER2"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true  
+
+# id02-p03 controls valve for: Chambre parents Sud
+  - platform: mqtt
+    name: "Sonoff 4ch-id02-p03"
+    command_topic: "cmnd/sonoff4ch-id02/power3"
+    state_topic: "stat/sonoff4ch-id02/POWER3"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true
+    
+# id02-p04 controls valve for: Atelier/Corridor
+  - platform: mqtt
+    name: "Sonoff 4ch-id02-p04"
+    command_topic: "cmnd/sonoff4ch-id02/power4"
+    state_topic: "stat/sonoff4ch-id02/POWER4"
+    qos: 1
+    payload_on: "on"
+    payload_off: "off"
+    retain: true
+    
+    
+    
+    
+    ##########################
+    ### Automation Section ###
+    ##########################
+
+automation:   
+
+########################################################################
+#                                  #######################################
+# automatic temperature control -> #  heat generation - general settings #
+#                                  #######################################
+
+  - alias: '(heating) dynamic change of min temp living'
+    initial_state: true
+    trigger:
+      - platform: state
+        entity_id: weather.dark_sky
+    action:
+      - service: input_number.set_value
+        data_template: 
+          value: >
+            {% if is_state('input_boolean.vacancy_mode' , 'on') %}
+              19
+            {% elif states.weather.dark_sky.state == 'sunny' %}
+              20
+            {% else %}
+              22
+            {% endif %}
+          entity_id: input_number.temp_min_living
+
+
+  - alias: '(heating) automation deactivated'
+    initial_state: true
+    trigger:
+      - platform: state
+        entity_id: input_boolean.heating_auto_temp_control
+        to: "off"
+    action:
+      - service: automation.turn_off
+        entity_id: automation.heating_automatic_temperature_control
+        
+  - alias: '(heating) automation activated'
+    initial_state: true
+    trigger:
+      - platform: state
+        entity_id: input_boolean.heating_auto_temp_control
+        to: "on"
+    action:
+      - service: automation.turn_on
+        entity_id: automation.heating_automatic_temperature_control        
+        
+
+  - alias: '(heating) close or open all valves'
+    initial_state: true
+    trigger:
+      - platform: state
+        entity_id: automation.heating_automatic_temperature_control
+      - platform: state
+        entity_id: input_boolean.heating_close_open_all_valves
+    condition:
+      - condition: state
+        entity_id: input_boolean.heating_auto_temp_control
+        state: "off"
+    action:
+      - service_template: >
+          {% if is_state('input_boolean.heating_close_open_all_valves', 'on') %}
+            switch.turn_on
+          {% else %}
+            switch.turn_off
+          {% endif %}  
+        data:
+          entity_id: 
+            - switch.sonoff_4ch_id01_p01
+            - switch.sonoff_4ch_id01_p02
+            - switch.sonoff_4ch_id01_p03
+            - switch.sonoff_4ch_id01_p04
+            - switch.sonoff_4ch_id02_p01
+            - switch.sonoff_4ch_id02_p02
+            - switch.sonoff_4ch_id02_p03
+            - switch.sonoff_4ch_id02_p04        
+
+
+#######################################################
+                                   ####################
+# automatic temperature control -> #  heat generation #
+                                   ####################
+
+   ### to develop: predictive temperature management, e.g.
+   # a) a warm winter day is followed by a frosty night, in order to avoid a temperature drop in the house, the heating must proactively turn on
+   # b) a cold winter night is followed by a warm winter day (lots of sunshine), in order to overheat the house during the night, the heating must be turned off earlier
+   #
+   # How to:
+   # "Ziel-Raumtemperatur" dynamisch a) erhöhen oder b) reduzieren
+   # Wert, um den erhöht oder reduziert wird: muss durch einen Algorithmus bestimmt werden (detailliert) oder durch eine fixe Gradzahl, z.B. 0.5 Grad
+   #     ### Algorithmus - Einflussfaktoren
+   #         Differenz zwischen Maximaltemperatur am Tag und Minimaltemperatur in der Nacht
+   #         spezielle Wetterereignisse, wie z.B. Bise, Nebel, Hochnebel, Sonnenschein, Bedeckungsgrad durch Wolken, etc...
+   #            
+    # Wettervorhersage für den Tag (z.B. sunny bzw. partial sunny)
+    # Temperatursensoren (bereits am Morgen) überhalb der "soll"-Temperatur
+  # input_boolean.preventive_overheat_control muss manuell setzbar auschaltbar sein, damit Jalousien nicht runterfahren
+  # nur aktiv im Frühjahr/Sommer/Herbst, im Winter wird eher von höheren Temperaturen durch Sonneneinstrahlung profitiert, senkt die Heizkosten
+  # Aktion: PAC -> Heizkreis und Mischkreis runterfahren?
+
+  - alias: '(heating) automatic temperature control'
+    initial_state: true
+    trigger:
+      - platform: time_pattern
+        minutes: '/15'
+    condition:
+      - condition: state
+        entity_id: input_boolean.heating_auto_temp_control
+        state: 'on'     
+    action:
+      - service_template: >
+          {% if states.input_number.temp_min_living.state | float > states.sensor.temp_corridor_rez.state | float %}
+            switch.turn_on
+          {% elif states.input_number.temp_min_living.state | float <= states.sensor.temp_corridor_rez.state | float %}
+            switch.turn_off
+          {% endif %}
+        data:
+          entity_id: switch.sonoff_4ch_id01_p01
+      - service_template: >
+          {% if states.input_number.temp_min_living.state | float > (states.sensor.temp_office.state | float + 2) %}
+            switch.turn_on
+          {% elif states.input_number.temp_min_living.state | float <= (states.sensor.temp_office.state | float + 2) %}
+            switch.turn_off
+          {% endif %}
+        data:
+          entity_id: switch.sonoff_4ch_id01_p02
+      - service_template: >
+          {% if states.input_number.temp_min_sleeping.state | float > states.sensor.temp_room_etagenord.state | float %}
+            switch.turn_on
+          {% elif states.input_number.temp_min_sleeping.state | float <= states.sensor.temp_room_etagenord.state | float %}
+            switch.turn_off
+          {% endif %}
+        data:
+          entity_id: switch.sonoff_4ch_id02_p01          
+      - service_template: >
+          {% if states.input_number.temp_min_living.state | float > states.sensor.temp_room_etage_sud.state | float %}
+            switch.turn_on
+          {% elif states.input_number.temp_min_living.state | float <= states.sensor.temp_room_etage_sud.state | float %}
+            switch.turn_off
+          {% endif %}
+        data:
+          entity_id: switch.sonoff_4ch_id02_p02
+      - service_template: >
+          {% if states.input_number.temp_min_sleeping.state | float > states.sensor.temp_master_bedroom_sud_etage.state | float %}
+            switch.turn_on
+          {% elif states.input_number.temp_min_sleeping.state | float <= states.sensor.temp_master_bedroom_sud_etage.state | float %}
+            switch.turn_off
+          {% endif %}
+        data:
+          entity_id: switch.sonoff_4ch_id02_p03
+      - service_template: >
+          {% if states.input_number.temp_min_living.state | float > states.sensor.temp_corridor_etage.state | float %}
+            switch.turn_on
+          {% elif states.input_number.temp_min_living.state | float <= states.sensor.temp_corridor_etage.state | float %}
+            switch.turn_off
+          {% endif %}
+        data:
+          entity_id: switch.sonoff_4ch_id02_p04
+          
+
+# add service templates for other rooms or groups of rooms accordingly
+
+
+  - alias: '(heating) office rez uses sun for room heating'
+    trigger:
+      - platform: template
+        value_template: "{{is_state('binary_sensor.office_valve_status', 'on') }}"
+      - platform: template
+        value_template: "{{ 75 < states.sensor.azimuth.state |int }}"
+    condition:
+      condition: and
+      conditions:
+        - condition: template   # Sun is in right azimuth and sky is not covered
+          value_template: "{{ 75 < states.sensor.azimuth.state |int < 220 }}"
+        - condition: template
+          value_template: "{{states.weather.dark_sky.state == 'partlycloudy' or states.weather.dark_sky.state == 'clear' or states.weather.dark_sky.state == 'sunny' }}" 
+        - condition: template
+          value_template: "{{is_state('binary_sensor.office_valve_status', 'on')  }}"
+    action:
+      service: cover.open_cover
+      entity_id: cover.office_rez
+
+
+###########################################################################
+                                   ########################################
+# automatic temperature control -> #  heat containment - general settings #
+                                   ########################################
+
+
+  - alias: '(heat containment) manual override'
+    initial_state: true
+    trigger:
+      - platform: state
+        entity_id: input_boolean.heat_containment_control
+    action:
+      - service_template: >
+          {% if is_state('input_boolean.heat_containment_control', 'on') %}
+            automation.turn_on
+          {% else %}
+            automation.turn_off
+          {% endif %}  
+        data:
+          entity_id:
+            - automation.heat_containment_living_rez_blinds_down_initial_automation
+            - automation.heat_containment_office_rez_turns_blinds_down
+            - automation.heat_containment_pertaining_heat_turns_blinds_down_during_next_day
+            - automation.heat_containment_unused_blinds_reset_south_side
+
+
+
+#########################################################
+                                   ######################
+# automatic temperature control -> #  heat containment  #
+                                   ######################
+
+  - alias: '(heat containment) living rez blinds down (initial automation)'
+    initial_state: false
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.solar_heat_living_rez
+        to: "on" # wenn Sensor ausschlaegt mit 'on' kann man schnell reagieren, bei 'off' können die Lamellen dann auf 90 Grad (horizontal) gefahren werden
+      - platform: state
+        entity_id: binary_sensor.overheat_living_rez
+        to: "on"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 75 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 105 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 135 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 165 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 195 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 225 }}"     
+    condition: # feststellen, ob der Grund für die Waermeentwicklung = ausschliesslich Sonneneinstrahlung ist
+      condition: and
+      conditions:
+        - condition: template # die aktuelle Temperatur ist gleich oder grösser als max-Soll-Temperatur
+          value_template: "{{ states.input_number.temp_max_living.state | int <= states.sensor.temp_corridor_rez.state | int  }}"
+        - condition: template # im Winter wird Sonnenwaerme aktiv eingefangen
+          value_template: "{{ states.sensor.season.state != 'winter' }}" 
+        - condition: state # es wird nicht geheizt
+          entity_id: binary_sensor.corridor_rez_valve_status
+          state: "off"
+        - condition: template
+          value_template: "{{states.weather.dark_sky.state == 'partlycloudy' or states.weather.dark_sky.state == 'sunny' }}"
+        - condition: template
+          value_template: "{{states.sensor.period_of_day.state == 'day' }}"
+        - condition: or
+          conditions:  # die Sonne muss sich im Einflussbereich befinden!!! Ansonsten nuetzen keine Storen etwas!
+            - condition: template
+              value_template: "{{ 15 < states.sensor.solar_angle.state |int < 60 }}"
+            - condition: template
+              value_template: "{{ 75 < states.sensor.azimuth.state |int < 242 }}"
+#        - condition: or
+#          conditions:  # Temp steigt an oder schon überhalb der Solltemperatur?
+#            - condition: state
+#              entity_id: binary_sensor.overheat_living_rez   # es ist bereits zu warm in rez (5% ueber soll-wert)
+#              state: "on"
+# cut/paste here: value_template: "{{states.binary_sensor.solar_heat_living_rez.state == 'on' }}"
+    action:
+      - service: cover.set_cover_position
+        data_template:
+          entity_id: >
+            {% if states.sensor.azimuth.state |int < 220 and states.binary_sensor.living_sliding_door_south_right.state != 'on'%}
+              cover.all_living_south_shutters
+            {% elif states.sensor.azimuth.state |int < 220 %}
+              cover.living_south_left  
+            {% elif states.sensor.azimuth.state |int >= 220 and 25 < states.sensor.solar_angle.state |int and states.binary_sensor.living_sliding_door_west_right.state != 'on'%}
+              cover.all_living_west_shutters
+            {% elif states.sensor.azimuth.state |int >= 220 and 25 < states.sensor.solar_angle.state |int %}
+              cover.living_west_left  
+            {% endif %}
+          position: 10
+
+
+  - alias: '(heat containment) office rez turns blinds down'
+    initial_state: true
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.solar_heat_office_rez
+        to: "on" # wenn Sensor ausschlaegt mit 'on' kann man schnell reagieren, bei 'off' können die Lamellen dann auf 90 Grad (horizontal) gefahren werden
+      - platform: template
+        value_template: "{{states.binary_sensor.overheat_office_rez.state == 'on' }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 75 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 105 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 135 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 165 }}"
+    condition: # Stand der Sonne im Einflussbereich oder Heizung an?
+      condition: and
+      conditions: 
+        - condition: template # die aktuelle Temperatur ist höher als die Minimal-Soll-Temperatur
+          value_template: "{{ states.input_number.temp_min_living.state | float <= states.sensor.temp_office.state | float }}"
+        - condition: template
+          value_template: "{{ states.sensor.season.state != 'winter' }}"
+        - condition: state
+          entity_id: input_boolean.office_heating_status
+          state: "off"
+        - condition: template
+          value_template: "{{ 75 < states.sensor.azimuth.state |int < 242 }}"
+        - condition: template
+          value_template: "{{states.weather.dark_sky.state == 'partlycloudy' or states.weather.dark_sky.state == 'sunny' }}"
+    action:
+      - service: cover.close_cover
+        entity_id: cover.office_rez
+
+
+  - alias: '(heat containment) pertaining heat turns blinds down during next day'
+    initial_state: true
+    trigger:
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 75 }}"
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 230 }}"     
+    condition:
+      condition: and
+      conditions:
+        - condition: template
+          value_template: "{{states.weather.dark_sky.state == 'partlycloudy' or states.weather.dark_sky.state == 'sunny' }}"
+        - condition: template
+          value_template: "{{states.sensor.no_house_activity.state == 'True' }}"
+        - condition: or
+          conditions:
+            - condition: state
+              entity_id: binary_sensor.overheat_living_rez
+              state: "on"
+            - condition: state
+              entity_id: binary_sensor.overheat_office_rez
+              state: "on"
+    action:
+      - service: cover.close_cover
+        data_template:
+          entity_id: >
+            {% if states.sensor.azimuth.state |int == 230 and is_state(binary_sensor.overheat_living_rez , 'on') and not is_state('binary_sensor.living_sliding_door_west_right', 'open') %}
+              cover.all_living_west_shutters
+            {% elif states.sensor.azimuth.state |int == 75 and is_state('binary_sensor.overheat_living_rez' , 'on') %} and not is_state('binary_sensor.living_sliding_door_south_right', 'open') %}   
+              cover.all_south_shutters
+            {% endif %}
+
+
+  - alias: '(heat containment) unused blinds reset south side'
+    initial_state: false
+    trigger:
+      - platform: template
+        value_template: "{{ states.sensor.azimuth.state |int == 230 }}"
+    action:
+      - service: cover.open_cover # nur sued-orientierte Storen hochfahren lassen, da Sonne bereits nicht mehr im Einstrahlwinkel ist
+        entity_id:
+          - cover.living_south_left
+          - cover.living_south_right
+          - cover.office_rez
+      - delay: '00:00:02'
+      - service: cover.stop_cover # komplett hochfahren nur wenn input boolean deaktiviert
+        entity_id:
+          - cover.living_south_left
+          - cover.living_south_right
+          - cover.office_rez
+      - condition: state
+        entity_id: input_boolean.blind_opening_lamellas_only
+        state: "off"
+      - service: cover.open_cover
+        entity_id:
+          - cover.living_south_left
+          - cover.living_south_right
+          - cover.office_rez
+
+
+
+                                   ######################
+# automatic temperature control -> #         cooling    #
+                                   ######################
+                                   #
+                                   # ab einer MK-Vorlauftemperatur IST von 20 Grad+ kann die Kühlfunktion aktiviert werden (nachdem es drausen mehr als 6h wärmer als 25 Grad war)
+                                   # Damit die Temperatur steigen kann (wegen Erwärmung FBH) müssen die Ventile geöfffnet sein
+
+  - alias: '(cooling) activate valve flow'
+    initial_state: false
+    trigger:
+      - platform: template
+        value_template: "{{ states.sensor.luxtronik_id_web_sollwert_tvl_mk2.state |int == 20 }}"
+    action:
+      - service: automation.turn_off
+        entity_id: automation.heating_automatic_temperature_control
+      - service: switch.turn_on
+        data:
+          entity_id: 
+            - switch.sonoff_4ch_id01_p01
+            - switch.sonoff_4ch_id01_p02
+#            - switch.sonoff_4ch_id01_p03
+#            - switch.sonoff_4ch_id01_p04
+            - switch.sonoff_4ch_id02_p01
+            - switch.sonoff_4ch_id02_p02
+            - switch.sonoff_4ch_id02_p03
+            - switch.sonoff_4ch_id02_p04 
+
+
+# -> Indikator dafür, dass es draussen z.B. nachts kühl wird (Beispiel: http://192.168.1.27:3000/dashboard/snapshot/pcwKlhDsnzvglf54dg5w7s2l3d2yNk9h)
+  - alias: '(cooling) de-activate valve flow'
+    trigger:
+      platform: template 
+      value_template: "{{ states.sensor.luxtronik_id_web_sollwert_tvl_mk2.state |int > 20 }}"
+    action:
+      - service: automation.turn_on
+        entity_id: automation.heating_automatic_temperature_control
