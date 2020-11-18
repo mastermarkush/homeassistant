@@ -1,0 +1,14 @@
+### binary_sensor luxtronik
+
+  - platform: luxtronik
+    sensors:
+      - group: calculations
+        id: ID_WEB_HUPout
+        friendly_name: Umwaelzpumpe
+      - group: calculations
+        id: ID_WEB_VD1out
+        friendly_name: Ausgang Verdichter 1 (WP ist an/aus)
+      - group: calculations
+        id: ID_WEB_BUPout
+        friendly_name: Brauchwasserpumpe / Umstellventil
+        icon: mdi:hand-water

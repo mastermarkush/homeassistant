@@ -1,0 +1,98 @@
+### iocage ### v0.115
+## Sensors -> Luxtronik Heat Pump
+
+  - platform: luxtronik
+    sensors:
+      - group: calculations
+        id: ID_WEB_Temperatur_TVL
+        friendly_name: Vorlauftemperatur Heizkreis Ist
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Temperatur_TRL
+        friendly_name: Rücklauftemperatur Heizkreis Ist
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Sollwert_TRL_HZ
+        friendly_name: Rücklauftemperatur Heizkreis Soll
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Temperatur_TRL_ext
+        friendly_name: Rücklauftemperatur Trennspeicher
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Temperatur_TBW
+        friendly_name: Temperatur Warmwasser ist
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Einst_BWS_akt
+        friendly_name: Temperatur Warmwasser Soll
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Temperatur_TA
+        friendly_name: Temperatur Aussen
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Mitteltemperatur
+        friendly_name: Mittlere Aussentemperatur 24h
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_WP_BZ_akt
+        friendly_name: Betriebszustand
+      - group: calculations
+        id: ID_WEB_WMZ_Heizung
+        friendly_name: Heizleistung total
+        icon: mdi:history
+      - group: calculations
+        id: ID_WEB_WMZ_Brauchwasser
+        friendly_name: Warmwasser Leistung total
+        icon: mdi:history
+      - group: calculations
+        id: ID_WEB_Zaehler_BetrZeitWP
+        friendly_name: Betriebszeit Wärmepumpe in Sekunden
+        icon: mdi:history
+      - group: calculations
+        id: ID_WEB_Zaehler_BetrZeitBW
+        friendly_name: Betriebszeit Warmwasser in Sekunden
+        icon: mdi:history
+      - group: calculations
+        id: ID_WEB_HZIO_PWM
+        friendly_name: Regelsignal Umwaelzpumpe
+      - group: calculations
+        id: ID_WEB_Temperatur_TFB2
+        friendly_name: Mischkreis 2 Vorlauftemperatur Ist
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_Sollwert_TVL_MK2
+        friendly_name: Mischkreis 2 Vorlauftemperatur Soll
+        icon: mdi:thermometer
+      - group: calculations
+        id: ID_WEB_MA2out
+        friendly_name: Mischkreis 2 offen
+      - group: calculations
+        id: ID_WEB_MZ2out
+        friendly_name: Mischkreis 2 geschlossen
+      - group: parameters
+        id: ID_Einst_WK_akt
+        friendly_name: System Temperatur Soll Anpassung
+      - group: parameters
+        id: ID_Einst_BWS_akt #Warmwasser Temperatur Soll/Anpassung
+        friendly_name: Warmwasser Temperatur Soll Anpassung
+      - group: parameters
+        id: ID_Ba_Hz_akt #The mode of operation of the heating circuit, possible values are "Automatic", "Second heatsource", "Party", "Holidays", "Off"
+        friendly_name: Heizung Modus
+      - group: parameters
+        id: ID_Ba_Bw_akt #The mode of operation of the hot water circuit, possible values are "Automatic", "Second heatsource", "Party", "Holidays", "Off"
+        friendly_name: Warmwasser Modus
+
+  - platform: template
+    sensors:
+      wp_mischkreis:
+        friendly_name: 'Mischkreis 2'
+        value_template: >
+          {% if is_state('luxtronik.mischkreis_2_offen', 'True') %}
+            offen
+          {% elif is_state('luxtronik.mischkreis_2_geschlossen', 'True') %}
+            geschlossen
+          {% else %}  
+            moving
+          {% endif %}
