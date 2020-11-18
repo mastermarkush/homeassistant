@@ -1,0 +1,88 @@
+type: picture-elements
+image: 'http://your_homeassisstant_ip:8123/local/pufferspeicher_v3.jpg'
+elements:
+  - type: state-label
+    entity: luxtronik.mischkreis_2_vorlauftemperatur_ist
+    style:
+      top: 35%
+      left: 77%
+    prefix: VL-ist_
+  - type: state-label
+    entity: luxtronik.rucklauftemperatur_trennspeicher
+    style:
+      top: 87%
+      left: 72%
+      color: red
+      font-size: 15px
+  - type: state-label
+    entity: sensor.wp_mischkreis
+    style:
+      top: 30%
+      left: 91%
+      font-size: 10px
+      writing-mode: vertical-lr
+      text-orientation: sideways-right
+      color: green
+  - type: state-label
+    entity: luxtronik.mischkreis_2_vorlauftemperatur_soll
+    prefix: VLmax_
+    style:
+      top: 20%
+      left: 55%
+  - type: state-label
+    entity: luxtronik.vorlauftemperatur_heizkreis_ist
+    prefix: null
+    style:
+      top: 46%
+      left: 53%
+  - type: state-label
+    entity: luxtronik.rucklauftemperatur_heizkreis_ist
+    prefix: RL_ist_
+    style:
+      top: 75%
+      left: 48%
+  - type: state-label
+    entity: luxtronik.rucklauftemperatur_heizkreis_soll
+    prefix: RLSoll_
+    style:
+      top: 97%
+      left: 48%
+      font-size: 15px
+      color: green
+  - type: state-badge
+    entity: luxtronik.ausgang_verdichter_1_wp_ist_an_aus
+    style:
+      top: 95%
+      left: 23%
+  - type: state-label
+    entity: luxtronik.regelsignal_umwaelzpumpe
+    style:
+      top: 55%
+      left: 44%
+  - type: state-label
+    entity: luxtronik.temperatur_warmwasser_ist
+    prefix: WW-ist_
+    style:
+      top: 37%
+      left: 12%
+  - type: state-label
+    entity: luxtronik.temperatur_warmwasser_soll
+    prefix: WW-soll_
+    style:
+      top: 42%
+      left: 13%
+  - type: state-label
+    entity: luxtronik.brauchwasserpumpe_umstellventil
+    style:
+      top: 50%
+      left: 30%
+  - type: conditional
+    conditions:
+      - entity: binary_sensor.water_hot
+        state: 'on'
+    elements:
+      - type: state-icon
+        entity: binary_sensor.water_hot
+        style:
+          top: 47%
+          left: 23%
