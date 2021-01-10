@@ -1,81 +1,74 @@
 type: picture-elements
-image: 'http://your_homeassisstant_ip:8123/local/pufferspeicher_v3.jpg'
+image: 'http://192.168.1.23:8123/local/heating/heizung_v6.jpg'
 elements:
   - type: state-label
     entity: luxtronik.mischkreis_2_vorlauftemperatur_ist
     style:
-      top: 35%
-      left: 77%
-    prefix: VL-ist_
+      top: 47%
+      left: 79%
+      font-size: 10px
   - type: state-label
     entity: luxtronik.rucklauftemperatur_trennspeicher
     style:
-      top: 87%
-      left: 72%
-      color: red
-      font-size: 15px
+      top: 82%
+      left: 83%
+      font-size: 16px
+      color: blue
   - type: state-label
     entity: sensor.wp_mischkreis
     style:
-      top: 30%
-      left: 91%
+      top: 53%
+      left: 77%
       font-size: 10px
-      writing-mode: vertical-lr
-      text-orientation: sideways-right
-      color: green
+      color: black
   - type: state-label
     entity: luxtronik.mischkreis_2_vorlauftemperatur_soll
-    prefix: VLmax_
     style:
-      top: 20%
-      left: 55%
+      top: 25%
+      left: 89%
+      font-size: 10px
   - type: state-label
     entity: luxtronik.vorlauftemperatur_heizkreis_ist
-    prefix: null
     style:
-      top: 46%
-      left: 53%
+      top: 64%
+      left: 44%
+      font-size: 12px
   - type: state-label
     entity: luxtronik.rucklauftemperatur_heizkreis_ist
-    prefix: RL_ist_
     style:
-      top: 75%
-      left: 48%
+      top: 81%
+      left: 44%
+      font-size: 12px
   - type: state-label
     entity: luxtronik.rucklauftemperatur_heizkreis_soll
-    prefix: RLSoll_
     style:
-      top: 97%
-      left: 48%
-      font-size: 15px
-      color: green
-  - type: state-badge
-    entity: luxtronik.ausgang_verdichter_1_wp_ist_an_aus
+      top: 78%
+      left: 60%
+      font-size: 16px
+      color: white
+  - type: state-label
+    entity: sensor.heating_hysteresis
     style:
-      top: 95%
-      left: 23%
+      top: 90.7%
+      left: 60%
+      font-size: 16px
+      color: red
   - type: state-label
     entity: luxtronik.regelsignal_umwaelzpumpe
     style:
-      top: 55%
-      left: 44%
+      top: 60%
+      left: 25%
+      z-index: 1
   - type: state-label
     entity: luxtronik.temperatur_warmwasser_ist
-    prefix: WW-ist_
     style:
-      top: 37%
-      left: 12%
+      top: 23%
+      left: 24%
   - type: state-label
     entity: luxtronik.temperatur_warmwasser_soll
-    prefix: WW-soll_
     style:
-      top: 42%
-      left: 13%
-  - type: state-label
-    entity: luxtronik.brauchwasserpumpe_umstellventil
-    style:
-      top: 50%
-      left: 30%
+      top: 17%
+      left: 24%
   - type: conditional
     conditions:
       - entity: binary_sensor.water_hot
@@ -84,5 +77,103 @@ elements:
       - type: state-icon
         entity: binary_sensor.water_hot
         style:
-          top: 47%
-          left: 23%
+          top: 12%
+          left: 25%
+  - type: conditional
+    conditions:
+      - entity: luxtronik.ausgang_verdichter_1_wp_ist_an_aus
+        state: 'on'
+      - entity: luxtronik.brauchwasserpumpe_umstellventil
+        state: 'off'
+      - entity: luxtronik.betriebszustand
+        state: heating
+    elements:
+      - type: image
+        image: 'http://192.168.1.23:8123/local/heating/crop_heatpump_on.jpg'
+        style:
+          top: 74%
+          left: 24.3%
+          width: 18%
+          height: 40%
+      - type: image
+        image: 'http://192.168.1.23:8123/local/heating/crop_heating_valve.jpg'
+        style:
+          top: 59.4%
+          left: 40.12%
+          width: 5%
+          height: 10%
+      - type: image
+        image: 'http://192.168.1.23:8123/local/heating/crop_heating_arrow.jpg'
+        style:
+          top: 45%
+          left: 85.4%
+          width: 6%
+          height: 10%
+      - type: image
+        image: 'http://192.168.1.23:8123/local/heating/crop_heating_banner.jpg'
+        style:
+          top: 23%
+          left: 60%
+          width: 20%
+          height: 20%
+  - type: conditional
+    conditions:
+      - entity: luxtronik.ausgang_verdichter_1_wp_ist_an_aus
+        state: 'on'
+      - entity: luxtronik.brauchwasserpumpe_umstellventil
+        state: 'on'
+      - entity: luxtronik.betriebszustand
+        state: hot water
+    elements:
+      - type: image
+        image: 'http://192.168.1.23:8123/local/heating/crop_heatpump_on.jpg'
+        style:
+          top: 73%
+          left: 24%
+          width: 18%
+          height: 40%
+      - type: image
+        image: 'http://192.168.1.23:8123/local/heating/crop_hot_water_valve_arrows.jpg'
+        style:
+          top: 52.4%
+          left: 40.4%
+          width: 7%
+          height: 68%
+  - type: conditional
+    conditions:
+      - entity: switch.hot_water_template_switch
+        state: 'on'
+    elements:
+      - type: state-badge
+        entity: switch.hot_water_template_switch
+        style:
+          top: 40%
+          left: 35%
+  - type: state-label
+    entity: luxtronik.system_temperatur_soll_anpassung
+    style:
+      font-size: 12px
+      top: 94%
+      left: 93%
+  - type: state-label
+    entity: luxtronik.temperatur_aussen
+    style:
+      font-size: 12px
+      top: 55%
+      left: 10%
+  - type: state-label
+    entity: luxtronik.mittlere_aussentemperatur_24h
+    style:
+      font-size: 12px
+      top: 70%
+      left: 10%
+  - type: conditional
+    conditions:
+      - entity: luxtronik.betriebszustand
+        state: defrost
+    elements:
+      - type: state-badge
+        entity: luxtronik.betriebszustand
+        style:
+          top: 55%
+          left: 24%
