@@ -1,4 +1,4 @@
-### # iocage # v0.115
+### # iocage # v2021.2
 ######################################
 ###                                ###
 ###     +++   PACKAGE   +++        ###
@@ -11,7 +11,7 @@
   ### Unless battery SOC is below the "debt" threshold, consumers can freely use available stored and live generated energy, depending on set priorities
 
 ### Energy Consumption per consumer:
-  # EV charge : via fibaro smart ipmlant (switch.ev_charging_authorization) -> consumption set to max 3kWh (13A x 230V) in summertime and 2.3kWh (10A x 230V) during winter
+  # EV charge : via fibaro smart ipmlant (switch.ev_charging_authorization) -> consumption set to max 2.3kWh (10A x 230V)
   # hot water: via Sonoff Basic01 -> consumption max. 2kWh, manually set via "bridge" on hot water boiler electronics OR via heat pump during winter periods
   # heat pump between 1000 to 3000W power, depending on exterior temperature, etc.
 
@@ -29,20 +29,20 @@ automation:
     initial_state: true
     trigger:
       - platform: time_pattern
-        minutes: "/5"
+        minutes: "/1"
     condition:
       - condition: state
-        entity_id: input_boolean.energy_flow_auto_control
+        entity_id: input_boolean.consumer_auto_prio
         state: 'on'
     action:
       - service: input_select.select_option
         data_template:
           entity_id: input_select.prio1_consumer
           option: >
-            {% if is_state('binary_sensor.auth_hot_water','on') %}
-              hot water
-            {% elif is_state('binary_sensor.auth_heat_pump','on') %}
+            {% if states('luxtronik.mittlere_aussentemperatur_24h') |int < 8  %}
               heat pump
+            {% elif is_state('binary_sensor.auth_hot_water','on') %}
+              hot water
             {% else %}
               ev charge
             {% endif %}
@@ -61,12 +61,10 @@ automation:
         data_template:
           entity_id: input_select.prio3_consumer
           option: >
-            {% if is_state('input_select.prio2_consumer', 'heat pump') %}
-              ev charge
-            {% elif is_state('input_select.prio2_consumer', 'hot water') %}
+            {% if is_state('input_select.prio1_consumer', 'ev charge') %}
               heat pump
             {% else %}
-              hot water
+              ev charge
             {% endif %}
 
     # calculation of "energy debt" value, based on weather forecast
@@ -75,16 +73,21 @@ automation:
     trigger:
       - platform: state
         entity_id: sensor.openweathermap_weather_code
+      - platform: state
+        entity_id: sensor.openweathermap_condition
+      - platform: state
+        entity_id: sensor.period_of_day
+        to: 'day'
     action:
       - service: input_number.set_value
         data_template: 
           value: >
             {% if is_state('sensor.owm_code_to_name', 'Partly Cloudy') %}
-              60
+              70
             {% elif is_state('sensor.owm_code_to_name', 'Clear') %}
-              80
+              90
             {% else %}
-              40
+              50
             {% endif %}
           entity_id: input_number.dynamic_battery_debt
 
@@ -93,7 +96,7 @@ automation:
     trigger:
       - platform: template
         value_template: >
-          {{ (states('luxtronik.rucklauftemperatur_trennspeicher') | float + 12) >
+          {{ (states('luxtronik.rucklauftemperatur_trennspeicher') | float + 14) >
              states('luxtronik.rucklauftemperatur_heizkreis_soll') | float
           }}
     action: # alternatives: switch off as soon as MK valve reports "geschlossen"
@@ -107,6 +110,9 @@ automation:
   - alias: '(energy control) dynamically authorize energy consumers'
     initial_state: true
     trigger:
+      - platform: state
+        entity_id: binary_sensor.target_soc_failure
+        to: 'off'
       - platform: state
         entity_id: binary_sensor.auth_hot_water
         to: 'on'
@@ -160,6 +166,11 @@ automation:
       - condition: state
         entity_id: binary_sensor.target_soc_failure
         state: 'off'
+      - condition: state
+        entity_id: input_boolean.energy_flow_auto_control
+        state: 'on'
+      - condition: template
+        value_template: "{{ states.sensor.power_from_public_grid.state | int < 100 }}"
       - condition: template
         value_template: "{{ not is_state('sensor.dynamic_priority_consumer', 'no consumer authorized') and not is_state('sensor.battery_mode', 'calibrate') }}"
     action:
@@ -167,15 +178,28 @@ automation:
           - conditions:
               - condition: template
                 value_template: "{{ not is_state('sensor.dynamic_priority_consumer', 'hot water') }}"
+              - condition: state
+                entity_id: sensor.dynamic_priority_consumer
+                state: 'ev charge'
             sequence:
               - service: switch.turn_on
+                entity_id: switch.ev_charging_authorization
+          - conditions:
+              - condition: template
+                value_template: "{{ not is_state('sensor.dynamic_priority_consumer', 'hot water') }}"
+              - condition: state
+                entity_id: sensor.dynamic_priority_consumer
+                state: 'heat pump'
+            sequence:
+              - service: luxtronik.write
                 data_template:
-                  entity_id: >
-                    {% if is_state('sensor.dynamic_priority_consumer', 'heat pump') %}
-                      switch.heat_pump
-                    {% elif is_state('sensor.dynamic_priority_consumer', 'ev charge') %}
-                      switch.ev_charging_authorization
-                    {% endif %}
+                  parameter: ID_Einst_WK_akt
+                  value: >
+                    {% if states('luxtronik.system_temperatur_soll_anpassung') | int == 0 %}
+                      2
+                    {% else %}
+                      {{ states('luxtronik.system_temperatur_soll_anpassung') | int *2 }}
+                    {% endif %}           
           - conditions:
               - condition: state
                 entity_id: sensor.dynamic_priority_consumer
@@ -240,57 +264,39 @@ automation:
         for:
           minutes: 1
     condition:
-      - condition: or
-        conditions:
-          - condition: state
-            entity_id: sensor.dynamic_shutdown_consumer
-            state: 'hot water'
-          - condition: state
-            entity_id: sensor.dynamic_shutdown_consumer
-            state: 'ev charge'
-    action:
-      - service: switch.turn_off
-        data_template:
-          entity_id: >
-            {% if is_state('sensor.dynamic_shutdown_consumer', 'hot water') %} switch.hot_water_template_switch
-            {% elif is_state('sensor.dynamic_shutdown_consumer', 'ev charge') %} switch.ev_charging_authorization          
-            {%endif%}
- 
-#        ###  EV Charge specific orders  ###
-         ###################################
-  - alias: '(energy control) start ev charging latest at 0h00 the same day'
-    initial_state: true
-    trigger:
-      platform: template
-      value_template: "{{ states('sensor.date') == (states.input_datetime.ev_must_be_ready_by.attributes.timestamp) | int | timestamp_custom ('%Y-%m-%d', true) }}"
-    action:
-      service: switch.turn_on
-      entity_id: switch.ev_charging_authorization
-
-  - alias: '(energy control) hue tap switch activates EV charge for 5 minutes'
-    initial_state: true
-    trigger:
-      - platform: state
-        entity_id: sensor.hue_tap_switch_1
-    condition:  
       - condition: state
-        entity_id: sensor.hue_tap_switch_1
-        state: '3_click'        
-    action:
-      - service: switch.turn_on
-        entity_id: switch.ev_charging_authorization
-      - service: script.ev_charge_5min_audio
-      - delay: '00:05:00'
-      - service: switch.turn_off
-        entity_id: switch.ev_charging_authorization
-      - service: input_boolean.turn_on
         entity_id: input_boolean.energy_flow_auto_control
+        state: 'on'
+      - condition: template
+        value_template: "{{ not is_state('sensor.dynamic_shutdown_consumer', '_no_consumer_activated_') }}"
+    action:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('sensor.dynamic_shutdown_consumer', 'hot water') }}"
+            sequence:
+              - service: switch.turn_off
+                entity_id: switch.hot_water_template_switch
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('sensor.dynamic_shutdown_consumer', 'ev charge') }}"
+            sequence:
+              - service: switch.turn_off
+                entity_id: switch.ev_charging_authorization
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('sensor.dynamic_shutdown_consumer', 'heat pump overheat') }}"
+            sequence:
+              - service: luxtronik.write
+                data:
+                  parameter: ID_Einst_WK_akt
+                  value: 2
 
 
 #        ###  heat pump specific orders  ###
          ###################################
 
-  - alias: '(heat pump) switch PAC mode'
+  - alias: '(heat pump) PAC holiday mode'
     initial_state: true
     trigger:
       - platform: state
@@ -321,71 +327,63 @@ automation:
               parameter: ID_Ba_Bw_akt
               value: Automatic
 
-  - alias: '(heat pump) daily PAC heating temp normalisation'
+  - alias: '(heat pump) daily PAC heat curve increment'
     initial_state: true
     trigger:
       - platform: numeric_state
         entity_id: sun.sun
         attribute: elevation
-        above: 15
+        above: 20
+    condition:
+      - condition: state
+        entity_id: binary_sensor.pv_winter_period
+        state: 'on'
+    action:
+      - service: luxtronik.write
+        data_template:
+          parameter: ID_Einst_WK_akt
+          value: >
+            {% if (states('luxtronik.temperatur_aussen') | float - states('luxtronik.mittlere_aussentemperatur_24h') | float) >3 %}
+              2
+            {% else %}
+              1
+            {% endif %}
+
+  - alias: '(heat pump) boost with excess PV energy'
+    initial_state: false
+    trigger:
+      - platform: numeric_state
+        entity_id: luxtronik.system_temperatur_soll_anpassung
+        above: 3
+    action:
+      - service: switch.turn_on
+        entity_id: switch.heat_pump
+
+  - alias: '(heat pump) nightly PAC heat curve decrease'
+    initial_state: true
+    trigger:
+      - platform: sun
+        event: sunset
+        offset: "-01:45:00"
+
     action:
       - service: luxtronik.write
         data:
           parameter: ID_Einst_WK_akt
           value: 0
 
-  - alias: '(heat pump) daily PAC heating temp increment'
-    initial_state: true
-    trigger:
-      - platform: numeric_state
-        entity_id: sun.sun
-        attribute: elevation
-        above: 19
-    condition:
-      condition: not
-      conditions:
-        - condition: state
-          entity_id: sensor.season
-          state: 'summer'
-    action:
-      - service: luxtronik.write
-        data:
-          parameter: ID_Einst_WK_akt
-          value: 2
-
-  - alias: '(heat pump) nightly PAC heating temp decrease'
-    initial_state: true
-    trigger:
-      - platform: sun
-        event: sunset
-        offset: "-01:00:00"
-    condition:
-      condition: not
-      conditions:
-        - condition: state
-          entity_id: sensor.season
-          state: 'summer'
-    action:
-      - service: luxtronik.write
-        data:
-          parameter: ID_Einst_WK_akt
-          value: -1
-
   - alias: '(heat pump) daily PAC warm water cycle'
     initial_state: true
     trigger:
       - platform: time
-        at: '14:00:00'
+        at: '13:30:00'
     action:
       - service: luxtronik.write
         data:
           parameter: ID_Soll_BWS_akt
           value: 48
-      - delay: '01:30:00'
-      - service: luxtronik.write
-        data:
-          parameter: ID_Soll_BWS_akt
-          value: 43
+
+    # STOP orders #
 
   - alias: '(heat pump) deactivate hot water production' 
     initial_state: true
@@ -393,12 +391,27 @@ automation:
       - platform: state
         entity_id: binary_sensor.water_hot
         to: 'on'
+      - platform: time
+        at: "15:30:00"
     action:
       - service: luxtronik.write
         data:
           parameter: ID_Soll_BWS_akt
           value: 43
-          
+
+  - alias: '(energy control) deactivate heat pump' 
+    initial_state: true
+    trigger:
+      - platform: template
+        value_template: >
+          {{ 
+            states('luxtronik.rucklauftemperatur_trennspeicher') | float >
+            (states('luxtronik.mischkreis_2_vorlauftemperatur_soll') | float + 2)
+          }}
+    action:
+      - service: switch.turn_off
+        entity_id: switch.heat_pump
+
           ##########################
 #         ###      Sensors       ###
           ##########################
@@ -455,11 +468,46 @@ sensor:
                            no consumer authorized
             {% endif %}
           {% endif %}
+          
 # dynamic shutdown consumer
       dynamic_shutdown_consumer:
         friendly_name: "ready for shutdown:"
         value_template: >
-          {% if is_state('input_boolean.ev_charge_override','on') %} hot water
+          {% if states('luxtronik.system_temperatur_soll_anpassung') | int > 2 or is_state('switch.hot_water_template_switch', 'on') or is_state('switch.ev_charging_authorization', 'on') %}
+
+            {% if is_state('input_select.prio3_consumer', 'heat pump') and states('luxtronik.system_temperatur_soll_anpassung') | int > 2 %}
+                            heat pump overheat
+            {% elif is_state('input_select.prio3_consumer', 'hot water') and is_state('switch.hot_water_template_switch', 'on') %}
+                            hot water
+            {% elif is_state('input_select.prio3_consumer', 'ev charge') and is_state('switch.ev_charging_authorization', 'on') and 
+            not is_state('input_boolean.ev_charge_override','on') and not is_state('timer.ev_battery_top_up','active') %}
+                            ev charge
+
+            {% elif is_state('input_select.prio2_consumer', 'heat pump') and states('luxtronik.system_temperatur_soll_anpassung') | int > 2 %}
+                            heat pump overheat
+            {% elif is_state('input_select.prio2_consumer', 'hot water') and is_state('switch.hot_water_template_switch', 'on') %}
+                            hot water
+            {% elif is_state('input_select.prio2_consumer', 'ev charge') and is_state('switch.ev_charging_authorization', 'on') and 
+            not is_state('input_boolean.ev_charge_override','on') and not is_state('timer.ev_battery_top_up','active') %}
+                            ev charge
+
+            {% elif is_state('input_select.prio1_consumer', 'heat pump') and states('luxtronik.system_temperatur_soll_anpassung') | int > 2 %}
+                            heat pump overheat
+            {% elif is_state('input_select.prio1_consumer', 'hot water') and is_state('switch.hot_water_template_switch', 'on') %}
+                            hot water
+            {% elif is_state('input_select.prio1_consumer', 'ev charge') and is_state('switch.ev_charging_authorization', 'on') and
+            not is_state('input_boolean.ev_charge_override','on') and not is_state('timer.ev_battery_top_up','active') %}
+                            ev charge
+            {% else %} _manual_consumer_active_
+            {% endif %}
+
+          {% else %} _no_consumer_activated_
+          {% endif %}
+
+      dynamic_shutdown_consumer_old:
+        friendly_name: "ready for shutdown:"
+        value_template: >
+          {% if is_state('input_boolean.ev_charge_override','on') or is_state('timer.ev_battery_top_up','active') %} hot water
 
           {% elif is_state('switch.heat_pump', 'on') or is_state('switch.hot_water_template_switch', 'on') or is_state('switch.ev_charging_authorization', 'on') %}
 
@@ -483,7 +531,6 @@ sensor:
               {% elif is_state('switch.heat_pump', 'on') %}
                               N/A - heat pump running
               {% endif %}
-
 
             {% elif is_state('input_select.prio3_consumer', 'ev charge') %}
               {% if is_state('switch.ev_charging_authorization', 'on') %}
@@ -651,7 +698,7 @@ sensor:
         value_template: "{{ (states.sensor.cumulated_production_5min.state | int - states.sensor.total_household_consumption_inc_batt_5min.state | int) }}"
 
 
-    # calculate remaining_pv_light, dynamic_debt_offset and target_debt_soc
+    # calculate remaining_pv_light and target_debt_soc
 
   - platform: template
     sensors:
@@ -663,36 +710,51 @@ sensor:
   - platform: template
     sensors:
       remaining_pv_light:
+        value_template: >
+          {% if is_state('sensor.season', 'summer') %}
+            {{'%.2f' |format (states.sensor.remaining_daylight.state | float -1.5) }}
+          {% else %}
+            {{'%.2f' |format (states.sensor.remaining_daylight.state | float -0.9) }}
+          {% endif %}
+
+  - platform: template
+    sensors:
+      remaining_pv_light_clock:
         friendly_name: "remaining time for PV energy production"
         unit_of_measurement: "h"
         value_template: >
           {% if is_state('sensor.season', 'summer') %}
-            {{'%.2f' |format (states.sensor.remaining_daylight.state | float -1.5) }}
+            {% set hours = states.sensor.remaining_daylight.state | float -1.5 %}
+            {% set minutes = ((hours % 1) * 60) | int %}
+            {% set hours = (hours - (hours % 1)) | int %}
+              {{ '%02i:%02i'%(hours, minutes) }}
           {% elif is_state('sensor.season', 'winter') %}
-            {{'%.2f' |format (states.sensor.remaining_daylight.state | float -1) }}
+            {% set hours = states.sensor.remaining_daylight.state | float -1 %}
+            {% set minutes = ((hours % 1) * 60) | int %}
+            {% set hours = (hours - (hours % 1)) | int %}
+              {{ '%02i:%02i'%(hours, minutes) }}
           {% else %}
-            {{'%.2f' |format (states.sensor.remaining_daylight.state | float -1.2) }}
+            {% set hours = states.sensor.remaining_daylight.state | float -1.2 %}
+            {% set minutes = ((hours % 1) * 60) | int %}
+            {% set hours = (hours - (hours % 1)) | int %}
+              {{ '%02i:%02i'%(hours, minutes) }}
           {% endif %}
           
-  - platform: template
-    sensors:
-      dynamic_debt_offset:
-        friendly_name: "debt offset from 100% SOC"
-        unit_of_measurement: "%"
-        value_template: "{{ '%.2f' |format (states.input_number.dynamic_battery_debt.state | int * (states.sensor.remaining_pv_light.state | float / (states.sensor.daylength.state | float - 1.8))) }}"
-
   - platform: template
     sensors:
       target_debt_soc:
         friendly_name: "dynamic target SOC"
         unit_of_measurement: "%"
         value_template: >
-          {% if states.sensor.dynamic_debt_offset.state | int > 9 %}
-            {{ 100-states.sensor.dynamic_debt_offset.state | int }}
+          {% if 7 < states('sensor.daylength') | int < 18 and states('input_number.dynamic_battery_debt') | int * ( states('sensor.remaining_pv_light') | float / states('sensor.daylength') | float) > 8 %}
+              {{ (100 - (states('input_number.dynamic_battery_debt') | int * (states('sensor.remaining_pv_light') | float / states('sensor.daylength') | float) ) ) | int }}
           {% else %}
-            92
-          {%endif%}
+               92
+          {% endif %}
 
+      heating_hysteresis:
+        friendly_name: Heating Hysteresis
+        value_template: "{{ '%.1f' |format (states('luxtronik.rucklauftemperatur_trennspeicher') | float - states('luxtronik.rucklauftemperatur_heizkreis_soll') | float) }}"
 
 #         ###  Binary Sensors    ###
           ##########################
@@ -705,22 +767,12 @@ binary_sensor:
       auth_heat_pump:
         friendly_name: "heat pump authorized"
         value_template: >
-          {{ states('sensor.solar_angle') |int > 12 and is_state('switch.heat_pump','off') and
-             (
-                (
-                  is_state('luxtronik.betriebszustand', 'heating')
-                )
-                 or
-                 (
-                 states('luxtronik.rucklauftemperatur_trennspeicher') | float < 
-                 states('luxtronik.rucklauftemperatur_heizkreis_soll') | float
-                 )
-                 or
-                 (
-                  state_attr('weather.openweathermap', 'forecast') [1]['temperature'] |int  < 7
-                 )
-              )
+          {{ states('sensor.solar_angle') |int > 19 and is_state('switch.heat_pump','off') and 
+             states('luxtronik.system_temperatur_soll_anpassung') |int < 4 and
+             states('luxtronik.mittlere_aussentemperatur_24h') |int < 11 and
+             states('sensor.heating_hysteresis') | float < 1
           }}
+
 
       auth_hot_water:
         friendly_name: "hot water production authorized"
@@ -735,13 +787,13 @@ binary_sensor:
                  or 
                 (
                  is_state('binary_sensor.pv_winter_period', 'on') and 
-                 states('sensor.cumulated_production_5min') | int > 2000 and
+                 states('sensor.cumulated_production_5min') | int > 2500 and
                  is_state('switch.hot_water_template_switch', 'off')
                 )
                  or (
-                     states('sensor.battery_soc') | int > 91 and
+                     states('sensor.battery_soc') | int > 92 and
                       (
-                       is_state('switch.hot_water_template_switch', 'off') or
+                       is_state('switch.hot_water_template_switch', 'off') and
                        is_state('luxtronik.brauchwasserpumpe_umstellventil', 'off')
                       )
                     )
@@ -756,21 +808,16 @@ binary_sensor:
              is_state('switch.ev_charging_authorization', 'off') and
               (
                 (
-                 states('sensor.cumulated_production_5min') | int > 2000 and
-                 is_state('binary_sensor.pv_winter_period','on')
-                ) 
-               or 
-                (
-                 states('sensor.cumulated_production_5min') | int > 3000 and
-                 is_state('binary_sensor.pv_winter_period','off')
+                 states('sensor.cumulated_production_5min') | int > 2000 
                 ) 
                or
                 (
-                 states('sensor.battery_soc') | int > 92
+                 states('sensor.battery_soc') | int > 91
                 )
               )
           }}
         
+
       # switches 
       switch_heat_pump:
         value_template: "{{ is_state('switch.heat_pump','on') }}"
@@ -785,13 +832,13 @@ binary_sensor:
       water_hot:
         value_template: "{{ states('luxtronik.temperatur_warmwasser_ist') | float > 48 }}"
         friendly_name: "water is hot at 48+ degrees"
-        device_class: heat        
+        device_class: heat
       # target soc failure 
       target_soc_failure:
         friendly_name: "battery SOC vs. target SOC"
         device_class: battery   # battery device class ---> On means low, Off means normal
         value_template: "{{ states('sensor.battery_soc') | int < states('sensor.target_debt_soc') | int }}"
-      # pv winter period
+      # pv winter period as of October 26th 2020 until February 16th 2021
       pv_winter_period:
         friendly_name: "Limited PV production"
         value_template: >
@@ -835,33 +882,7 @@ switch: # Sonoff Basic 01 Switch manages heating coil for warm water (drinking w
           data:
             entity_id: switch.hot_water_production
 
-#         ###      Scripts       ###
-          ##########################
-    
-script:
-  manual_ev_charge:
-    alias: manual ev charge
-    sequence:
-      - service: input_boolean.turn_on
-        entity_id: input_boolean.ev_charge_override
-      - service: switch.turn_on
-        entity_id: switch.ev_charging_authorization
-      - delay:
-          minutes: "{{ states('input_number.manual_ev_charge') | int }}"
-      - service: switch.turn_off
-        entity_id: switch.ev_charging_authorization
-      - service: input_boolean.turn_off
-        entity_id: input_boolean.ev_charge_override
 
-  ev_charge_5min_audio:
-    sequence: # script doesn't support TTS
-      - service: script.turn_on
-        entity_id: script.sonos_say2
-        data_template:
-          variables:
-            sonos_entity: media_player.p1mobile
-            volume: 0.5
-            message: "Ladung für Elektroauto autorisiert!"
 
 
 #  ###############################
@@ -870,41 +891,29 @@ script:
 
 input_boolean:
   energy_flow_auto_control:
-    name: automatic priority allocation
+    name: automatic SOC control
     initial: on
+  consumer_auto_prio:
+    name: automatic priority adjustment
+    initial: on  
 
   energy_audio_notifications:
     name: Notifications for energy events
     initial: off
     icon: mdi:bell-ring
 
-  ev_charge_override:
-    name: override auto stop during ev charge
-    initial: off
-
 input_number:
   dynamic_battery_debt:
     name: dynamically calculated offset value for battery debt
-    initial: 50
+    initial: 10
     min: 10
     max: 100
     step: 10
 
-  manual_ev_charge:
-    name: ev charge in minutes
-    initial: 60
-    min: 30
-    max: 480
-    step: 30
     
    ###############################
    ###   INPUT                 ###
    ###############################
-
-input_datetime:
-  ev_must_be_ready_by:
-    name: EV charging must be completed by this date
-    has_date: true
 
 input_select:
   prio1_consumer:
@@ -933,3 +942,5 @@ input_select:
       - heat pump
     initial: hot water
     icon: mdi:arrow-down-circle
+
+
