@@ -12,7 +12,7 @@
 
 ### Energy Consumption per consumer:
   # EV charge : via fibaro smart ipmlant (switch.ev_charging_authorization) -> consumption set to max 2.3kWh (10A x 230V)
-  # hot water: via Sonoff Basic01 -> consumption max. 2kWh, manually set via "bridge" on hot water boiler electronics OR via heat pump during winter periods
+  # hot water: via Sonoff 4ch ID01 -> consumption max. 2kWh, manually set via "bridge" on hot water boiler electronics OR via heat pump during winter periods
   # heat pump between 1000 to 3000W power, depending on exterior temperature, etc.
 
 
@@ -216,6 +216,32 @@ automation:
               - condition: numeric_state
                 entity_id: luxtronik.temperatur_warmwasser_ist
                 below: 43
+            sequence:
+              - service: luxtronik.write
+                data:
+                  parameter: ID_Soll_BWS_akt
+                  value: 53
+          - conditions:
+              - condition: state
+                entity_id: sensor.dynamic_priority_consumer
+                state: 'hot water'
+              - condition: state
+                entity_id: input_boolean.vacancy_mode
+                state: 'off'
+              - condition: numeric_state
+                entity_id: luxtronik.temperatur_warmwasser_soll
+                below: 53
+              - condition: state
+                entity_id: luxtronik.brauchwasserpumpe_umstellventil
+                state: 'off'
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity_id: binary_sensor.auth_heat_pump
+                    state: 'on'
+                  - condition: state
+                    entity_id: luxtronik.ausgang_verdichter_1_wp_ist_an_aus
+                    state: 'on'
             sequence:
               - service: luxtronik.write
                 data:
@@ -734,7 +760,7 @@ sensor:
             {% set hours = (hours - (hours % 1)) | int %}
               {{ '%02i:%02i'%(hours, minutes) }}
           {% else %}
-            {% set hours = states.sensor.remaining_daylight.state | float -1.2 %}
+            {% set hours = states.sensor.remaining_daylight.state | float -1.3 %}
             {% set minutes = ((hours % 1) * 60) | int %}
             {% set hours = (hours - (hours % 1)) | int %}
               {{ '%02i:%02i'%(hours, minutes) }}
@@ -781,8 +807,9 @@ binary_sensor:
               (
                 (
                 is_state('binary_sensor.pv_winter_period', 'off') and 
-                is_state('switch.hot_water_template_switch', 'off') and
-                is_state('luxtronik.brauchwasserpumpe_umstellventil', 'off')
+                  ( is_state('switch.hot_water_template_switch', 'off') and
+                    is_state('luxtronik.brauchwasserpumpe_umstellventil', 'off')
+                  )
                 ) 
                  or 
                 (
@@ -849,7 +876,7 @@ binary_sensor:
 
   - platform: mqtt
     name: "hot water boiler 2kwh"
-    state_topic: "stat/sonoff_01/POWER"
+    state_topic: "stat/sonoff4ch-id01/POWER4"
     payload_on: "ON"
     payload_off: "OFF"
     device_class: power
@@ -858,11 +885,11 @@ binary_sensor:
 #         ###      Switches      ###
           ##########################
 
-switch: # Sonoff Basic 01 Switch manages heating coil for warm water (drinking water) production
+switch: # Sonoff 4ch-id01 Switch manages heating coil for warm water (drinking water) production
   - platform: mqtt
     name: "hot water production"
-    command_topic: "cmnd/sonoff_01/power"
-    state_topic: "stat/sonoff_01/POWER"
+    command_topic: "cmnd/sonoff4ch-id01/power4"
+    state_topic: "stat/sonoff4ch-id01/POWER4"
     qos: 1
     payload_on: "on"
     payload_off: "off"
